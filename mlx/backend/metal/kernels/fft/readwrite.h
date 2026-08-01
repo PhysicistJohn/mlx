@@ -3,6 +3,7 @@
 #include <metal_common>
 
 #include "mlx/backend/metal/kernels/fft/radix.h"
+#include "mlx/backend/metal/kernels/fp8.h"
 
 /* FFT helpers for reading and writing from/to device memory.
 
@@ -81,6 +82,38 @@ struct FFTIOTypeTraits {
   static_assert(
       in_traits::is_complex || out_traits::is_complex,
       "FFT requires complex input or output storage");
+};
+
+// Two E4M3 lanes are an experimental 16-bit complex storage representation.
+// Its arithmetic representation is deliberately half2: Apple Metal does not
+// expose native E4M3 vector arithmetic. Keeping conversion in this trait
+// makes an FP8-storage/FP16-compute FFT explicit and prevents a float fallback.
+struct fft_fp8_e4m3x2 {
+  uint8_t real;
+  uint8_t imag;
+};
+
+static_assert(
+    sizeof(fft_fp8_e4m3x2) == 2,
+    "E4M3 complex storage must occupy exactly two bytes");
+
+template <>
+struct FFTValueTraits<fft_fp8_e4m3x2> {
+  using scalar_T = half;
+  using complex_T = fft_complex_t<scalar_T>;
+  static constexpr constant bool is_complex = true;
+
+  static METAL_FUNC complex_T load(fft_fp8_e4m3x2 value) {
+    auto real = fp8_e4m3(0.0f);
+    auto imag = fp8_e4m3(0.0f);
+    real.bits = value.real;
+    imag.bits = value.imag;
+    return complex_T(static_cast<half>(real), static_cast<half>(imag));
+  }
+
+  static METAL_FUNC fft_fp8_e4m3x2 store(complex_T value) {
+    return {fp8_e4m3(value.x).bits, fp8_e4m3(value.y).bits};
+  }
 };
 
 template <typename in_T, typename out_T, int step = 0, bool four_step_real = false>
