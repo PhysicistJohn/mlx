@@ -2,6 +2,7 @@
 
 #include <metal_common>
 
+#include "mlx/backend/metal/kernels/complex.h"
 #include "mlx/backend/metal/kernels/fft/radix.h"
 
 /* FFT helpers for reading and writing from/to device memory.
@@ -74,6 +75,29 @@ struct FFTValueTraits<vec<T, 2>> {
 
   static METAL_FUNC complex_T store(complex_T value) {
     return value;
+  }
+};
+
+template <typename T>
+struct FFTValueTraits<complex_t<T>> {
+  static_assert(
+      metal::is_floating_point_v<T>,
+      "FFT complex storage must use floating-point scalar lanes");
+
+  using scalar_T = T;
+  using complex_T = fft_complex_t<scalar_T>;
+  static constexpr constant bool is_complex = true;
+
+  static_assert(
+      sizeof(complex_T) == sizeof(complex_t<T>),
+      "FFT complex storage must preserve the input layout");
+
+  static METAL_FUNC complex_T load(complex_t<T> value) {
+    return fft_make_complex<T>(value.real, value.imag);
+  }
+
+  static METAL_FUNC complex_t<T> store(complex_T value) {
+    return complex_t<T>(value.x, value.y);
   }
 };
 
