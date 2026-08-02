@@ -75,9 +75,10 @@ METAL_FUNC fft_complex_t<T> complex_mul_conj(
 // Compute an FFT twiddle factor
 template <typename T>
 METAL_FUNC fft_complex_t<T> get_twiddle(int k, int p) {
-  // Metal's fast trig functions are evaluated in float. Convert at the
-  // twiddle boundary so that the butterfly arithmetic itself remains in T.
-  float theta = -2.0f * k * M_PI_F / p;
+  // Derive phase evaluation precision from the scalar lane and Metal's pi
+  // constant. Reduced lanes currently promote to float for fast trig.
+  using phase_T = decltype(M_PI_F * T(0));
+  phase_T theta = -phase_T(2) * phase_T(k) * phase_T(M_PI_F) / phase_T(p);
   return fft_make_complex<T>(metal::fast::cos(theta), metal::fast::sin(theta));
 }
 
